@@ -1,0 +1,6 @@
+redis_connection: "localhost:6379"
+redis_db: 9
+redis_list: "mylist"
+redis_watch_interval: 3000
+redis_is_cluster: false
+debug: false
