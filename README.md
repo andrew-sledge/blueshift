@@ -1,2 +1,2 @@
 # blueshift
-A HTTP listener that pushes to a Redis list. Complementary to [blueshift](https://github.com/andrew-sledge/blueshift).
+A HTTP listener that pushes to a Redis list. Complementary to [redshift](https://github.com/andrew-sledge/redshift).
