@@ -1,9 +1,10 @@
 package main
 
 import (
-	"encoding/base64"
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/abbot/go-http-auth"
 	"github.com/fzzy/radix/extra/cluster"
 	"github.com/fzzy/radix/redis"
 	"github.com/gorilla/mux"
@@ -111,7 +112,7 @@ func PushCluster(settings *yaml.Yaml, message Message) {
 	rc.Close()
 }
 
-func IngestHandler(w http.ResponseWriter, r *http.Request) {
+func IngestHandler(w http.ResponseWriter, r *auth.AuthenticatedRequest) {
 
 	var yml_config_file string
 	y_c, e := os.LookupEnv("BLUESHIFT_CONFIG")
@@ -126,9 +127,10 @@ func IngestHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("TODO: fix errors")
 	}
 
-	vars := mux.Vars(r)
-	group := vars["group"]
-	source := vars["source"]
+	url_pieces := strings.Split(r.URL.String(), "/")
+
+	group := url_pieces[2]
+	source := url_pieces[3]
 
 	t := time.Now()
 	ts := t.Format("Mon Jan 2 15:04:05 -0700 MST 2006")
@@ -185,48 +187,35 @@ func RedisStatusHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("hello world")
 }
 
-func M(h http.HandlerFunc, middleware ...func(http.HandlerFunc) http.HandlerFunc) http.HandlerFunc {
-	for _, m := range middleware {
-		h = m(h)
+func Authenticator(user, realm string) string {
+	if file, err := os.Open(".htdigest"); err == nil {
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		var line string
+		user_realm := fmt.Sprintf("%s:%s", user, realm)
+		for scanner.Scan() {
+			line = scanner.Text()
+			if strings.Contains(line, user_realm) {
+				r := strings.Split(line, ":")
+				if r[0] == user && r[1] == realm {
+					return r[2]
+				}
+			}
+		}
+
+		if err = scanner.Err(); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		log.Fatal(err)
 	}
-	return h
-}
-
-func AuthHandler(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-
-		s := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
-		if len(s) != 2 {
-			http.Error(w, "Not authorized", 401)
-			return
-		}
-
-		b, err := base64.StdEncoding.DecodeString(s[1])
-		if err != nil {
-			http.Error(w, err.Error(), 401)
-			return
-		}
-
-		pair := strings.SplitN(string(b), ":", 2)
-		if len(pair) != 2 {
-			http.Error(w, "Not authorized", 401)
-			return
-		}
-
-		// TODO: read htaccess file
-		if pair[0] != "username" || pair[1] != "password" {
-			http.Error(w, "Not authorized", 401)
-			return
-		}
-
-		h.ServeHTTP(w, r)
-	}
+	return ""
 }
 
 func main() {
 	r := mux.NewRouter()
-	r.HandleFunc("/b/{group}/{source}", M(IngestHandler, AuthHandler))
+	authenticator := auth.NewDigestAuthenticator("doppler", Authenticator)
+	r.HandleFunc("/b/{group}/{source}", authenticator.Wrap(IngestHandler))
 	r.HandleFunc("/redis-status", RedisStatusHandler)
 	log.Fatal(http.ListenAndServe(":8080", r))
 
