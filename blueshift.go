@@ -23,6 +23,7 @@ type IngestMessage struct {
 	Subject   string
 	Detail    string
 	Magnitude int
+	Floater   float32
 	Severity  int
 	Extra     string
 }
@@ -34,6 +35,7 @@ type Message struct {
 	Subject   string
 	Detail    string
 	Magnitude int
+	Floater   float32
 	Severity  int
 	Extra     string
 }
@@ -48,6 +50,10 @@ func nzl(s string) bool {
 
 func isn(n int) bool {
 	return reflect.ValueOf(n).Kind() == reflect.Int
+}
+
+func isf(n float32) bool {
+	return reflect.ValueOf(n).Kind() == reflect.Float32
 }
 
 func PushNode(settings *yaml.Yaml, message Message) {
@@ -148,7 +154,11 @@ func IngestHandler(w http.ResponseWriter, r *auth.AuthenticatedRequest) {
 		if err != nil {
 			fmt.Printf("[%s] ERROR Error received decoding JSON: %s\n", ts, err)
 		}
-		if nzl(t.Timestamp) && nzl(t.Subject) && nzl(t.Detail) && isn(t.Severity) && isn(t.Magnitude) {
+		// You have to have at least magnitude, not necessarily floater
+		if isf(t.Floater) == false {
+			t.Floater = 0.00
+		}
+		if nzl(t.Timestamp) && nzl(t.Subject) && nzl(t.Detail) && isn(t.Severity) && isn(t.Magnitude) && isf(t.Floater) {
 			// Proceed
 			var message Message
 			message.Timestamp = t.Timestamp
@@ -157,6 +167,7 @@ func IngestHandler(w http.ResponseWriter, r *auth.AuthenticatedRequest) {
 			message.Subject = t.Subject
 			message.Detail = t.Detail
 			message.Magnitude = t.Magnitude
+			message.Floater = t.Floater
 			message.Severity = t.Severity
 			message.Extra = t.Extra
 
